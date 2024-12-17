@@ -38,6 +38,92 @@ pub fn verify_positive_integer_input(s: &mut String) {
     }
 }
 
+enum AmmoType {
+    Shot,
+    APShot,
+    APShell,
+    HEShell,
+    MortarStone,
+    SmokeShell,
+}
+
+struct Ammo {
+    kind: AmmoType,
+    drag: f64,
+    gravity: f64,
+    name: String
+}
+
+impl Ammo {
+    fn shot() -> Self {
+        Self {
+            kind: AmmoType::Shot,
+            drag: 0.01,
+            gravity: 10.0,
+            name: "Shot".to_string()
+        }
+    }
+    fn ap_shot() -> Self {
+        Self {
+            kind: AmmoType::APShot,
+            drag: 0.01,
+            gravity: 10.0,
+            name: "AP Shot".to_string()
+        }
+    }
+    fn ap_shell() -> Self {
+        Self {
+            kind: AmmoType::APShell,
+            drag: 0.01,
+            gravity: 10.0,
+            name: "AP Shell".to_string()
+        }
+    }
+    fn he_shell() -> Self {
+        Self {
+            kind: AmmoType::HEShell,
+            drag: 0.01,
+            gravity: 10.0,
+            name: "HE Shell".to_string()
+        }
+    }
+    fn mortar_stone() -> Self {
+        Self {
+            kind: AmmoType::MortarStone,
+            drag: 0.01,
+            gravity: 5.0,
+            name: "Mortar Stone".to_string()
+        }
+    }
+    fn smoke_shell() -> Self {
+        Self {
+            kind: AmmoType::SmokeShell,
+            drag: 0.01,
+            gravity: 10.0,
+            name: "Smoke Shell".to_string()
+        }
+    }
+
+    fn select(ammo_type: &str) -> Ammo {
+        match ammo_type {
+            "Shot"          => { Ammo::shot() }
+            "AP Shot"       => { Ammo::ap_shot() }
+            "AP Shell"      => { Ammo::ap_shell() }
+            "HE Shell"      => { Ammo::he_shell() }
+            "Mortar Stone"  => { Ammo::mortar_stone() }
+            "Smoke Shell"   => { Ammo::smoke_shell() }
+            _ => {Ammo::shot()}
+        }
+    }
+    
+}
+
+impl PartialEq for Ammo {
+    fn eq(&self, other: &Self) -> bool {
+        self.name == other.name
+    }
+}
+
 struct Pair {
     pub direct_shot: f64,
     pub indirect_shot: f64
@@ -57,7 +143,7 @@ struct MyTab {
     t_x: String,
     t_y: String,
     t_z: String,
-    ammo_type: String,
+    ammo_type: Ammo,
     charges: String,
     yaw: f64,
     pitch: Pair,
@@ -77,7 +163,7 @@ impl MyTab {
             t_x: "".to_string(),
             t_y: "".to_string(),
             t_z: "".to_string(),
-            ammo_type: "".to_string(),
+            ammo_type: Ammo::shot(),
             charges: "".to_string(),
             yaw: f64::NAN,
             pitch: Pair {direct_shot: f64::NAN, indirect_shot: f64::NAN},
@@ -157,12 +243,12 @@ impl MyTab {
         
         ui.horizontal(|ui| {
             ComboBox::new("Ammo type", RichText::new(" :Ammo type").size(NORMAL_TEXT))
-            .selected_text(RichText::new(format!("{}", self.ammo_type)).size(NORMAL_TEXT))
+            .selected_text(RichText::new(format!("{}", self.ammo_type.name)).size(NORMAL_TEXT))
             .show_ui(ui, |ui| {
-                for ammo_type in ["Normal", "Mortar"] {
+                for ammo_type in ["Shot", "AP Shot", "AP Shell", "HE Shell", "Mortar Stone", "Smoke Shell"] {
                     ui.selectable_value(
                         &mut self.ammo_type,
-                        ammo_type.to_string(),
+                        Ammo::select(ammo_type),
                         RichText::new(ammo_type).size(NORMAL_TEXT)
                     );
                 }
@@ -185,12 +271,6 @@ impl MyTab {
                 Err(_) => {}
             };
         });
-        
-        match self.ammo_type.as_str() { //TO-DO: add types of ammo and properties
-            "Normal" => {}
-            "Mortar" => {}
-            _ => {}
-        }
 
         if ui.button(RichText::new("Calculate").size(TITLE_TEXT)).clicked() {
             let mut x: f64 = f64::NAN;
