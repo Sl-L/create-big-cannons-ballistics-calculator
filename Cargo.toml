@@ -1,0 +1,8 @@
+[package]
+name = "create-big-cannons-ballistics-calculator"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+egui = "0.30.0"
+egui_dock = "0.14.0"
