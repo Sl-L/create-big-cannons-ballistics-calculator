@@ -208,7 +208,8 @@ struct MyTab {
     pitch: Pair,
     time: Pair,
     impact_angle: Pair,
-    nozzle_velocity: String //Remove after calibration
+    nozzle_velocity: String, //Remove after calibration
+    drag: String //Remove after calibration
 }
 
 impl MyTab {
@@ -229,7 +230,8 @@ impl MyTab {
             pitch: Pair {direct_shot: f64::NAN, indirect_shot: f64::NAN},
             time: Pair {direct_shot: f64::NAN, indirect_shot: f64::NAN},
             impact_angle: Pair {direct_shot: f64::NAN, indirect_shot: f64::NAN},
-            nozzle_velocity: "".to_string() //Remove after calibration
+            nozzle_velocity: "".to_string(), //Remove after calibration
+            drag: "".to_string() //Remove after calibration
         }
     }
 
@@ -339,6 +341,15 @@ impl MyTab {
             });
             ui.label(RichText::new(" :Nozzle velocity").size(NORMAL_TEXT));
 
+            Grid::new("velocity")
+            .max_col_width(30.0)
+            .show(ui, |ui| {
+                if ui.text_edit_singleline(&mut self.drag).changed() {
+                    verify_signed_float_input(&mut self.drag);
+                }
+            });
+            ui.label(RichText::new(" :Drag").size(NORMAL_TEXT));
+
         });
 
         if ui.button(RichText::new("Calculate").size(TITLE_TEXT)).clicked() {
@@ -384,10 +395,16 @@ impl MyTab {
                 Err(_) => {}
             }
 
+            let mut u: f64 = f64::NAN;
+            match self.drag.parse::<f64>() {
+                Ok(drag) => u = drag,
+                Err(_) => {}
+            }
+
             let d: f64 = (x*x + z*z).sqrt();
 
-            let critical_point = find_critical_point(x, self.ammo_type.drag, v, self.ammo_type.gravity);
-            let angles = find_angles(x, y, self.ammo_type.drag, v, self.ammo_type.gravity, critical_point);
+            let critical_point = find_critical_point(d, u, v, self.ammo_type.gravity);
+            let angles = find_angles(d, y, u, v, self.ammo_type.gravity, critical_point);
 
             match angles {
                 Some(angles) => {
@@ -508,7 +525,8 @@ impl eframe::App for MyApp {
                 pitch: node.pitch,
                 time: node.time,
                 impact_angle: node.impact_angle,
-                nozzle_velocity: node.nozzle_velocity //Remove after calibration
+                nozzle_velocity: node.nozzle_velocity, //Remove after calibration
+                drag: node.drag //Remove after calibration
             });
             self.counter += 1;
         });
