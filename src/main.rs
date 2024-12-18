@@ -4,7 +4,7 @@ use eframe::{egui, NativeOptions};
 use egui::{ComboBox, Grid, RichText};
 use egui_dock::{DockArea, DockState, NodeIndex, SurfaceIndex};
 
-use std::f64::consts::PI;
+use std::f64::consts::TAU;
 use regex::Regex;
 
 const NORMAL_TEXT: f32 = 15.0;
@@ -60,10 +60,10 @@ fn find_angles(x: f64, y: f64, u: f64, v: f64, g: f64, critical_point: f64) -> O
     for i in 0..2 {
         a0 = critical_point;
         a1 = critical_point;
-        if i != 0 {
-            a1 += PI/180.0;
+        if i != 0 { //Add or substract a sexagesimal degree
+            a1 += TAU/360.0;
         } else {
-            a1 -= PI/180.0;
+            a1 -= TAU/360.0;
         }
 
         let mut a2: f64;
@@ -93,8 +93,8 @@ fn find_angles(x: f64, y: f64, u: f64, v: f64, g: f64, critical_point: f64) -> O
           +X (180°)
 */
 pub fn calc_yaw(x: f64, z: f64) -> f64 {
-    let mut yaw: f64 = -x.atan2(z).to_degrees();
-    if yaw < 0.0 { yaw += 360.0 }
+    let mut yaw: f64 = -x.atan2(z);
+    if yaw < 0.0 { yaw += TAU }
     yaw
 }
 enum AmmoType {
@@ -386,6 +386,8 @@ impl MyTab {
                 Err(_) => {}
             }
 
+            self.yaw = calc_yaw(x, z);
+
             //TO-DO: Implement usage of ammo type and ammount of power charges, calibratrion required
             
             //Remove after calibration
@@ -410,8 +412,6 @@ impl MyTab {
                 Some(angles) => {
                     self.pitch.direct_shot = angles.0;
                     self.pitch.indirect_shot = angles.1;
-                    println!("{}", angles.0);
-                    println!("{}", angles.1);
                 }
                 _ => {}
             }
