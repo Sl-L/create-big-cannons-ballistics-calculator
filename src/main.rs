@@ -4,6 +4,7 @@ use eframe::{egui, NativeOptions};
 use egui::{ComboBox, Grid, RichText};
 use egui_dock::{DockArea, DockState, NodeIndex, SurfaceIndex};
 
+use std::f64::consts::PI;
 use regex::Regex;
 
 const NORMAL_TEXT: f32 = 15.0;
@@ -38,6 +39,64 @@ pub fn verify_positive_integer_input(s: &mut String) {
     }
 }
 
+//function whose roots are the pitch angles for targetting
+fn angle_check(x: f64, y: f64, u: f64, v: f64, a: f64, g: f64) -> f64 {
+    let p: f64 = (x*u)/(v*a.cos());
+    (u*u*x*(a.tan()))/g + p - (y*u*u)/g + (1.0-p).ln()
+}
+
+//find critical point of angle_check to get initial guess when root-finding and differentiate direct and indirect shot pitch angles
+fn find_critical_point(x: f64, u: f64, v: f64, g: f64) -> f64{
+    (-(u*v*x)/((g*x).powi(2) + v.powi(4)).sqrt()).asin() - (-(v*v)/(g*x)).atan()
+}
+
+//Use the secand method to find the roots of angle_check (Newton's method fails)
+//Currently itering until the precision of f64 causes a NaN return, so it could be optimized if that somehow becomes an issue
+fn find_angles(x: f64, y: f64, u: f64, v: f64, g: f64, critical_point: f64) -> Option<(f64, f64)>{
+    let mut angles: [f64; 2] = [0.0, 0.0];
+    let mut a0: f64;
+    let mut a1: f64;
+    
+    for i in 0..2 {
+        a0 = critical_point;
+        a1 = critical_point;
+        if i != 0 {
+            a1 += PI/180.0;
+        } else {
+            a1 -= PI/180.0;
+        }
+
+        let mut a2: f64;
+        for _ in 0..20 {
+            a2 = a1 - angle_check(x, y, u, v, a1, g) * (a1 - a0) / (angle_check(x, y, u, v, a1, g) - angle_check(x, y, u, v, a0, g));
+            
+            if a2.is_infinite() || a2.is_nan() {
+                break
+            }
+            
+            a0 = a1;
+            a1 = a2;
+        }
+        angles[i] = a1;
+    }
+
+    Some((angles[0], angles[1]))
+}
+
+/*
+          -X (90°)
+             ^
+             |
+-Z (180°) <--O--> +Z (0°)
+             |
+             v
+          +X (180°)
+*/
+pub fn calc_yaw(x: f64, z: f64) -> f64 {
+    let mut yaw: f64 = -x.atan2(z).to_degrees();
+    if yaw < 0.0 { yaw += 360.0 }
+    yaw
+}
 enum AmmoType {
     Shot,
     APShot,
@@ -149,6 +208,7 @@ struct MyTab {
     pitch: Pair,
     time: Pair,
     impact_angle: Pair,
+    nozzle_velocity: String //Remove after calibration
 }
 
 impl MyTab {
@@ -164,11 +224,12 @@ impl MyTab {
             t_y: "".to_string(),
             t_z: "".to_string(),
             ammo_type: Ammo::shot(),
-            charges: "".to_string(),
+            charges: "1".to_string(),
             yaw: f64::NAN,
             pitch: Pair {direct_shot: f64::NAN, indirect_shot: f64::NAN},
             time: Pair {direct_shot: f64::NAN, indirect_shot: f64::NAN},
             impact_angle: Pair {direct_shot: f64::NAN, indirect_shot: f64::NAN},
+            nozzle_velocity: "".to_string() //Remove after calibration
         }
     }
 
@@ -177,7 +238,8 @@ impl MyTab {
             ui.label(RichText::new("Cartesian").size(30.0));
         });
 
-        Grid::new("title")
+        //Fields for cannon and target coords
+        Grid::new("coords")
         .min_col_width(ui.available_width() / 2.0 - 100.0)
         .max_col_width(ui.available_width() / 2.0 - 100.0)
         .min_row_height(15.0)
@@ -241,6 +303,7 @@ impl MyTab {
             });
         });
         
+        //Ammo type selector and number of powder charges
         ui.horizontal(|ui| {
             ComboBox::new("Ammo type", RichText::new(" :Ammo type").size(NORMAL_TEXT))
             .selected_text(RichText::new(format!("{}", self.ammo_type.name)).size(NORMAL_TEXT))
@@ -256,7 +319,7 @@ impl MyTab {
 
             ui.add_space(10.0);
 
-            Grid::new("0987")
+            Grid::new("charges")
             .max_col_width(30.0)
             .show(ui, |ui| {
                 if ui.text_edit_singleline(&mut self.charges).changed() {
@@ -266,16 +329,24 @@ impl MyTab {
 
             ui.label(RichText::new(" :Powder charges").size(NORMAL_TEXT));
 
-            match self.charges.parse::<f64>() { //TO-DO: add effect of charges
-                Ok(_) => {}
-                Err(_) => {}
-            };
+            //Remove after calibration
+            Grid::new("velocity")
+            .max_col_width(30.0)
+            .show(ui, |ui| {
+                if ui.text_edit_singleline(&mut self.nozzle_velocity).changed() {
+                    verify_signed_float_input(&mut self.nozzle_velocity);
+                }
+            });
+            ui.label(RichText::new(" :Nozzle velocity").size(NORMAL_TEXT));
+
         });
 
         if ui.button(RichText::new("Calculate").size(TITLE_TEXT)).clicked() {
-            let mut x: f64 = f64::NAN;
-            let mut y: f64 = f64::NAN;
-            let mut z: f64 = f64::NAN;
+            let mut x: f64 = 0.0;
+            let mut y: f64 = 0.0;
+            let mut z: f64 = 0.0;
+
+            //Convert input coords of cannon and target to f64 and store the difference
 
             match self.t_x.parse::<f64>() {
                 Ok(t_x) => x += t_x,
@@ -303,8 +374,33 @@ impl MyTab {
                 Ok(t_z) => z -= t_z,
                 Err(_) => {}
             }
+
+            //TO-DO: Implement usage of ammo type and ammount of power charges, calibratrion required
+            
+            //Remove after calibration
+            let mut v: f64 = f64::NAN;
+            match self.nozzle_velocity.parse::<f64>() {
+                Ok(nozzle_velocity) => v = nozzle_velocity,
+                Err(_) => {}
+            }
+
+            let d: f64 = (x*x + z*z).sqrt();
+
+            let critical_point = find_critical_point(x, self.ammo_type.drag, v, self.ammo_type.gravity);
+            let angles = find_angles(x, y, self.ammo_type.drag, v, self.ammo_type.gravity, critical_point);
+
+            match angles {
+                Some(angles) => {
+                    self.pitch.direct_shot = angles.0;
+                    self.pitch.indirect_shot = angles.1;
+                    println!("{}", angles.0);
+                    println!("{}", angles.1);
+                }
+                _ => {}
+            }
         }
 
+        //Show results
         Grid::new("results")
         .min_col_width(ui.available_width() / 2.0)
         .max_col_width(ui.available_width() / 2.0)
@@ -312,19 +408,19 @@ impl MyTab {
             ui.vertical(|ui| {
                 ui.group(|ui| {
                     ui.label(RichText::new("Direct Shot     ").size(NORMAL_TEXT * (4.0/3.0)));
-                    ui.label(RichText::new(format!("Yaw: {:.4}°", self.yaw)).size(NORMAL_TEXT));
-                    ui.label(RichText::new(format!("Pitch: {}°", self.pitch.direct_shot)).size(NORMAL_TEXT));
+                    ui.label(RichText::new(format!("Yaw: {:.4}°", self.yaw.to_degrees())).size(NORMAL_TEXT));
+                    ui.label(RichText::new(format!("Pitch: {}°", self.pitch.direct_shot.to_degrees())).size(NORMAL_TEXT));
                     ui.label(RichText::new(format!("Flight time: {:.4}s", self.time.direct_shot)).size(NORMAL_TEXT));
-                    ui.label(RichText::new(format!("Impact angle: {:.4}°", self.impact_angle.direct_shot)).size(NORMAL_TEXT));
+                    ui.label(RichText::new(format!("Impact angle: {:.4}°", self.impact_angle.direct_shot.to_degrees())).size(NORMAL_TEXT));
                 });
             });
             ui.vertical(|ui| {
                 ui.group(|ui| {
                     ui.label(RichText::new("Indirect Shot   ").size(NORMAL_TEXT * (4.0/3.0)));
-                    ui.label(RichText::new(format!("Yaw: {:.4}°", self.yaw)).size(NORMAL_TEXT));
-                    ui.label(RichText::new(format!("Pitch: {}°", self.pitch.indirect_shot)).size(NORMAL_TEXT));
+                    ui.label(RichText::new(format!("Yaw: {:.4}°", self.yaw.to_degrees())).size(NORMAL_TEXT));
+                    ui.label(RichText::new(format!("Pitch: {}°", self.pitch.indirect_shot.to_degrees())).size(NORMAL_TEXT));
                     ui.label(RichText::new(format!("Flight time: {:.4}s", self.time.indirect_shot)).size(NORMAL_TEXT));
-                    ui.label(RichText::new(format!("Impact angle: {:.4}°", self.impact_angle.indirect_shot)).size(NORMAL_TEXT));
+                    ui.label(RichText::new(format!("Impact angle: {:.4}°", self.impact_angle.indirect_shot.to_degrees())).size(NORMAL_TEXT));
                 });
             });
         });
@@ -412,6 +508,7 @@ impl eframe::App for MyApp {
                 pitch: node.pitch,
                 time: node.time,
                 impact_angle: node.impact_angle,
+                nozzle_velocity: node.nozzle_velocity //Remove after calibration
             });
             self.counter += 1;
         });
