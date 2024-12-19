@@ -45,13 +45,37 @@ fn angle_check(x: f64, y: f64, u: f64, v: f64, a: f64, g: f64) -> f64 {
     (u*u*x*(a.tan()))/g + p - (y*u*u)/g + (1.0-p).ln()
 }
 
-//find critical point of angle_check to get initial guess when root-finding and differentiate direct and indirect shot pitch angles
+//Find critical point of angle_check through the regula falsi method to get the initial guess for root-finding and selecting direct and indirect shot pitch angles
+//Should be able to optimize it better, or use an external math crate if it becomes a problem
 fn find_critical_point(x: f64, u: f64, v: f64, g: f64) -> f64{
-    (-(u*v*x)/((g*x).powi(2) + v.powi(4)).sqrt()).asin() - (-(v*v)/(g*x)).atan()
+    let mut a: f64 = (g*x).atan2(v*v);
+    let mut b: f64 = (g*x).atan2(-v*v);
+    let mut c: f64 = 0.0;
+    println!("{}", a.to_degrees());
+    println!("{}", b.to_degrees());
+
+    loop {
+        let fa = g*x*a.sin() + u*v*x - v*v*a.cos();
+        let fb = g*x*b.sin() + u*v*x - v*v*b.cos();
+
+        c = b - (fb * (b - a)) / (fb - fa);
+        
+        let fc = g*x*c.sin() + u*v*x - v*v*c.cos();
+        if fc.abs() < 0.00001 {
+            break
+        } else if fc.signum() == fa.signum() {
+            a = c;
+        } else {
+            b = c
+        }
+    }
+
+    c
 }
 
 //Use the secand method to find the roots of angle_check (Newton's method fails)
 //Currently itering until the precision of f64 causes a NaN return, so it could be optimized if that somehow becomes an issue
+//Considering moving to the bisection method to ensure convergence
 fn find_angles(x: f64, y: f64, u: f64, v: f64, g: f64, critical_point: f64) -> Option<(f64, f64)>{
     let mut angles: [f64; 2] = [0.0, 0.0];
     let mut a0: f64;
@@ -60,10 +84,13 @@ fn find_angles(x: f64, y: f64, u: f64, v: f64, g: f64, critical_point: f64) -> O
     for i in 0..2 {
         a0 = critical_point;
         a1 = critical_point;
-        if i != 0 { //Add or substract a sexagesimal degree
+        
+        if i != 0 { //Adjust initial values
             a1 += TAU/360.0;
+            a0 += TAU/90.0;
         } else {
-            a1 -= TAU/360.0;
+            a0 -= TAU/360.0;
+            a1 -= TAU/180.0;
         }
 
         let mut a2: f64;
@@ -77,6 +104,7 @@ fn find_angles(x: f64, y: f64, u: f64, v: f64, g: f64, critical_point: f64) -> O
             a0 = a1;
             a1 = a2;
         }
+        if (a1 > 180.0) || (a1 < -180.0) {a1 = f64::INFINITY;}
         angles[i] = a1;
     }
 
@@ -531,4 +559,40 @@ impl eframe::App for MyApp {
             self.counter += 1;
         });
     }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    //pre-calculated data set
+    //x, y, u, v, g, a, t
+    const TESTING_DATA: [[f64; 7]; 8] = [
+        [   23.541096135,    0.959446698, 0.01,  30.0, 10.0,  0.174532925, 0.8 ],
+        [  187.001956030,   63.079770828, 0.01, 200.0, 10.0,  0.349065850, 1.0 ],
+        [   64.467192584,   26.026190686, 0.01,  50.0, 10.0,  0.523598776, 1.5 ],
+        [ 1132.001739726,  905.308887445, 0.01, 500.0, 10.0,  0.698131701, 3.0 ],
+        [ 1709.752036132, 1993.049776655, 0.01, 900.0, 10.0,  0.872664626, 3.0 ],
+        [   54.698606123,   88.712887372, 0.01, 100.0, 10.0,  1.047197551, 1.1 ],
+        [  249.003450881,  -58.274490171, 0.01, 150.0, 10.0, -0.174532925, 1.7 ],
+        [   28.120418992,  -11.482914756, 0.01,  60.0, 10.0, -0.349065850, 0.5 ],
+    ];
+
+    #[test]
+    fn angle_calculation() {
+        for i in TESTING_DATA {
+            let crit = find_critical_point(i[0], i[2], i[3], i[4]);
+            let angles = find_angles(i[0], i[1], i[2], i[3], i[4], crit);
+
+            match angles {
+                Some(angle) => {
+                    if ! ( (0.00001 > (angle.1 - i[5]).abs()) || (0.00001 > (angle.0 - i[5]).abs())) {
+                        panic!("Failiure on test conditions {} {} {} {} {} {} {}, got crit {} and angles {} {}", i[0], i[1], i[2], i[3], i[4], i[5], i[6], crit, angle.0, angle.1)
+                    }
+                }
+                _ => {panic!("Unexpected outcome, find_angles didn't return anything")} //May change
+            }
+        }
+    }
+
 }
