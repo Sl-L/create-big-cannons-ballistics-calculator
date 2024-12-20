@@ -74,7 +74,7 @@ fn find_critical_point(x: f64, u: f64, v: f64, g: f64) -> f64{
 
 //Use the secand method to find the roots of angle_check (Newton's method fails)
 //Currently itering until the precision of f64 causes a NaN return, so it could be optimized if that somehow becomes an issue
-//Considering moving to the bisection method to ensure convergence
+//Considering moving to the regula falsi method to ensure convergence
 fn find_angles(x: f64, y: f64, u: f64, v: f64, g: f64, critical_point: f64) -> Result<(f64, f64), String>{
     let mut angles: [f64; 2] = [0.0, 0.0];
     
