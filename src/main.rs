@@ -4,6 +4,7 @@ use eframe::{egui, NativeOptions};
 use egui::{ComboBox, Grid, RichText};
 use egui_dock::{DockArea, DockState, NodeIndex, SurfaceIndex};
 
+use core::f64;
 use std::f64::consts::TAU;
 use regex::Regex;
 
@@ -50,9 +51,7 @@ fn angle_check(x: f64, y: f64, u: f64, v: f64, a: f64, g: f64) -> f64 {
 fn find_critical_point(x: f64, u: f64, v: f64, g: f64) -> f64{
     let mut a: f64 = (g*x).atan2(v*v);
     let mut b: f64 = (g*x).atan2(-v*v);
-    let mut c: f64 = 0.0;
-    println!("{}", a.to_degrees());
-    println!("{}", b.to_degrees());
+    let mut c: f64;
 
     loop {
         let fa = g*x*a.sin() + u*v*x - v*v*a.cos();
@@ -66,7 +65,7 @@ fn find_critical_point(x: f64, u: f64, v: f64, g: f64) -> f64{
         } else if fc.signum() == fa.signum() {
             a = c;
         } else {
-            b = c
+            b = c;
         }
     }
 
@@ -76,39 +75,54 @@ fn find_critical_point(x: f64, u: f64, v: f64, g: f64) -> f64{
 //Use the secand method to find the roots of angle_check (Newton's method fails)
 //Currently itering until the precision of f64 causes a NaN return, so it could be optimized if that somehow becomes an issue
 //Considering moving to the bisection method to ensure convergence
-fn find_angles(x: f64, y: f64, u: f64, v: f64, g: f64, critical_point: f64) -> Option<(f64, f64)>{
+fn find_angles(x: f64, y: f64, u: f64, v: f64, g: f64, critical_point: f64) -> Result<(f64, f64), String>{
     let mut angles: [f64; 2] = [0.0, 0.0];
-    let mut a0: f64;
-    let mut a1: f64;
+    
+    let cpa = angle_check(x, y, u, v, g, critical_point);
+    if cpa < 0.0 {
+        return Err("Out of range".to_string());
+    } else if cpa < 1e-12 {
+        return Ok((cpa, cpa));
+    }
     
     for i in 0..2 {
-        a0 = critical_point;
-        a1 = critical_point;
+        let mut a: f64 = critical_point;
+
+        let mut b = - 0.011111111 / TAU; // -4°
+        if i == 1 { b += TAU/4.0; }
+        else { b -= TAU/4.0; }
         
-        if i != 0 { //Adjust initial values
-            a1 += TAU/360.0;
-            a0 += TAU/90.0;
-        } else {
-            a0 -= TAU/360.0;
-            a1 -= TAU/180.0;
+        loop {
+            let fb = angle_check(x, y, u, v, b, g);
+            if fb < 0.0 { break }
+            else {
+                if i == 0 { b += 0.0017453292519943296; } // 0.1°
+                else { b-= 0.0017453292519943296; }
+            }
         }
 
-        let mut a2: f64;
-        for _ in 0..20 {
-            a2 = a1 - angle_check(x, y, u, v, a1, g) * (a1 - a0) / (angle_check(x, y, u, v, a1, g) - angle_check(x, y, u, v, a0, g));
+        let mut c: f64;
+        loop {
+            let fa = angle_check(x, y, u, v, a, g);
+            let fb = angle_check(x, y, u, v, b, g);
+
+            c = b - (fb * (b - a)) / (fb - fa);
             
-            if a2.is_infinite() || a2.is_nan() {
+            let fc = angle_check(x, y, u, v, c, g);
+            if fc.abs() < 1e-12 {
                 break
+            } else if fc.signum() == fa.signum() {
+                a = c;
+            } else if fc.signum() == fb.signum() {
+                b = c;
+            } else {
+                panic!("Impossible Error (angle_check returned NAN)");
             }
-            
-            a0 = a1;
-            a1 = a2;
         }
-        if (a1 > 180.0) || (a1 < -180.0) {a1 = f64::INFINITY;}
-        angles[i] = a1;
+        angles[i] = c;  
     }
 
-    Some((angles[0], angles[1]))
+    Ok((angles[0], angles[1]))
 }
 
 /*
@@ -437,11 +451,14 @@ impl MyTab {
             let angles = find_angles(d, y, u, v, self.ammo_type.gravity, critical_point);
 
             match angles {
-                Some(angles) => {
+                Ok(angles) => {
                     self.pitch.direct_shot = angles.0;
                     self.pitch.indirect_shot = angles.1;
                 }
-                _ => {}
+                _ => {
+                    self.pitch.direct_shot = f64::NAN;
+                    self.pitch.indirect_shot = f64::NAN;
+                }
             }
         }
 
@@ -454,18 +471,26 @@ impl MyTab {
                 ui.group(|ui| {
                     ui.label(RichText::new("Direct Shot     ").size(NORMAL_TEXT * (4.0/3.0)));
                     ui.label(RichText::new(format!("Yaw: {:.4}°", self.yaw.to_degrees())).size(NORMAL_TEXT));
-                    ui.label(RichText::new(format!("Pitch: {}°", self.pitch.direct_shot.to_degrees())).size(NORMAL_TEXT));
-                    ui.label(RichText::new(format!("Flight time: {:.4}s", self.time.direct_shot)).size(NORMAL_TEXT));
-                    ui.label(RichText::new(format!("Impact angle: {:.4}°", self.impact_angle.direct_shot.to_degrees())).size(NORMAL_TEXT));
+                    if self.pitch.direct_shot.is_finite() {
+                        ui.label(RichText::new(format!("Pitch: {}°", self.pitch.direct_shot.to_degrees())).size(NORMAL_TEXT));
+                        ui.label(RichText::new(format!("Flight time: {:.4}s", self.time.direct_shot)).size(NORMAL_TEXT));
+                        ui.label(RichText::new(format!("Impact angle: {:.4}°", self.impact_angle.direct_shot.to_degrees())).size(NORMAL_TEXT));
+                    } else {
+                        ui.label(RichText::new("OUT OF RANGE").size(NORMAL_TEXT * (4.0/3.0)));
+                    }
                 });
             });
             ui.vertical(|ui| {
                 ui.group(|ui| {
                     ui.label(RichText::new("Indirect Shot   ").size(NORMAL_TEXT * (4.0/3.0)));
                     ui.label(RichText::new(format!("Yaw: {:.4}°", self.yaw.to_degrees())).size(NORMAL_TEXT));
-                    ui.label(RichText::new(format!("Pitch: {}°", self.pitch.indirect_shot.to_degrees())).size(NORMAL_TEXT));
-                    ui.label(RichText::new(format!("Flight time: {:.4}s", self.time.indirect_shot)).size(NORMAL_TEXT));
-                    ui.label(RichText::new(format!("Impact angle: {:.4}°", self.impact_angle.indirect_shot.to_degrees())).size(NORMAL_TEXT));
+                    if self.pitch.direct_shot.is_finite() {
+                        ui.label(RichText::new(format!("Pitch: {}°", self.pitch.indirect_shot.to_degrees())).size(NORMAL_TEXT));
+                        ui.label(RichText::new(format!("Flight time: {:.4}s", self.time.indirect_shot)).size(NORMAL_TEXT));
+                        ui.label(RichText::new(format!("Impact angle: {:.4}°", self.impact_angle.indirect_shot.to_degrees())).size(NORMAL_TEXT));
+                    } else {
+                        ui.label(RichText::new("OUT OF RANGE").size(NORMAL_TEXT * (4.0/3.0)));
+                    }
                 });
             });
         });
@@ -585,7 +610,7 @@ mod tests {
             let angles = find_angles(i[0], i[1], i[2], i[3], i[4], crit);
 
             match angles {
-                Some(angle) => {
+                Ok(angle) => {
                     if ! ( (0.00001 > (angle.1 - i[5]).abs()) || (0.00001 > (angle.0 - i[5]).abs())) {
                         panic!("Failiure on test conditions {} {} {} {} {} {} {}, got crit {} and angles {} {}", i[0], i[1], i[2], i[3], i[4], i[5], i[6], crit, angle.0, angle.1)
                     }
