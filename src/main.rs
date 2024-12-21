@@ -139,69 +139,53 @@ pub fn calc_yaw(x: f64, z: f64) -> f64 {
     if yaw < 0.0 { yaw += TAU }
     yaw
 }
-enum AmmoType {
-    Shot,
-    APShot,
-    APShell,
-    HEShell,
-    MortarStone,
-    SmokeShell,
-}
-
 struct Ammo {
-    kind: AmmoType,
+    name: String,
     drag: f64,
-    gravity: f64,
-    name: String
+    gravity: f64
 }
 
 impl Ammo {
     fn shot() -> Self {
         Self {
-            kind: AmmoType::Shot,
+            name: "Shot".to_string(),
             drag: 0.01,
-            gravity: 10.0,
-            name: "Shot".to_string()
+            gravity: 10.0
         }
     }
     fn ap_shot() -> Self {
         Self {
-            kind: AmmoType::APShot,
+            name: "AP Shot".to_string(),
             drag: 0.01,
-            gravity: 10.0,
-            name: "AP Shot".to_string()
+            gravity: 10.0
         }
     }
     fn ap_shell() -> Self {
         Self {
-            kind: AmmoType::APShell,
+            name: "AP Shell".to_string(),
             drag: 0.01,
-            gravity: 10.0,
-            name: "AP Shell".to_string()
+            gravity: 10.0
         }
     }
     fn he_shell() -> Self {
         Self {
-            kind: AmmoType::HEShell,
+            name: "HE Shell".to_string(),
             drag: 0.01,
-            gravity: 10.0,
-            name: "HE Shell".to_string()
+            gravity: 10.0
         }
     }
     fn mortar_stone() -> Self {
         Self {
-            kind: AmmoType::MortarStone,
+            name: "Mortar Stone".to_string(),
             drag: 0.01,
-            gravity: 5.0,
-            name: "Mortar Stone".to_string()
+            gravity: 5.0
         }
     }
     fn smoke_shell() -> Self {
         Self {
-            kind: AmmoType::SmokeShell,
+            name: "Smoke Shell".to_string(),
             drag: 0.01,
-            gravity: 10.0,
-            name: "Smoke Shell".to_string()
+            gravity: 10.0
         }
     }
 
