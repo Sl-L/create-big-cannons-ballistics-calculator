@@ -78,7 +78,7 @@ fn find_critical_point(x: f64, u: f64, v: f64, g: f64) -> f64{
 fn find_angles(x: f64, y: f64, u: f64, v: f64, g: f64, critical_point: f64) -> Result<(f64, f64), String>{
     let mut angles: [f64; 2] = [0.0, 0.0];
     
-    let cpa = angle_check(x, y, u, v, g, critical_point);
+    let cpa = angle_check(x, y, u, v, critical_point, g);
     if cpa < 0.0 {
         return Err("Out of range".to_string());
     } else if cpa < 1e-12 {
